@@ -1,0 +1,17 @@
+# Python virtual environment
+.venv/
+
+# Local environment file
+.env
+
+# Dataset, model weights, and run outputs
+data/
+runs/
+yolo26n.pt
+data.yaml
+
+# Optional local folder if present
+env/
+
+# Editor settings
+.vscode/
