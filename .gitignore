@@ -6,6 +6,7 @@ __pycache__/
 *.pyc
 
 # Local computerVision project files
+computerVision/
 computerVision/.venv/
 computerVision/.env
 computerVision/data/
