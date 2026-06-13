@@ -1,0 +1,18 @@
+# Root python environment and editor files
+.venv/
+.env
+.vscode/
+__pycache__/
+*.pyc
+
+# Local computerVision project files
+computerVision/.venv/
+computerVision/.env
+computerVision/data/
+computerVision/runs/
+computerVision/yolo26n.pt
+computerVision/data.yaml
+computerVision/env/
+
+# Ignore nested git metadata if any
+**/.git
