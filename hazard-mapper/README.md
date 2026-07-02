@@ -22,7 +22,30 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Fire Hazard API
 
-The map currently uses NASA's EONET wildfire feed as the default source for fire hazard data. The API call lives in `app/api/fire-hazards/route.js`.
+The map currently uses NASA's EONET wildfire feed as the default source for fire hazard data. The API route lives in `app/api/fire-hazards/route.js`.
+
+### Where the app calls the API
+
+The client-side app makes requests to the same internal route from two pages:
+
+- `/map` renders the interactive map through `components/MapView.js`, which calls `fetch("/api/fire-hazards")` on mount.
+- `/hazards` renders a hazard list through `app/hazards/page.js`, which also calls `fetch("/api/fire-hazards")` on mount.
+
+### How the map is rendered
+
+1. `app/map/page.js` loads `components/MapView.js` dynamically with server-side rendering disabled so the map runs client-side.
+2. `MapView` requests the browser location when available and uses it to center the map; otherwise it falls back to Anaheim, California.
+3. It fetches hazard data from `/api/fire-hazards`, stores it in React state, and uses Leaflet to draw a marker for each hazard.
+4. Each marker is colored by severity and opens a popup when clicked, showing the hazard title, type, level, timestamp, and a fallback image.
+5. If the live feed fails or returns no data, the app falls back to sample hazards from `data/hazards.js`.
+
+### What the API route does
+
+The server handler in `app/api/fire-hazards/route.js`:
+
+- tries `FIRE_HAZARDS_API_URL` first when configured,
+- then calls NASA EONET at `https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&limit=50`,
+- and optionally calls the NASA FIRMS CSV endpoint when `FIRMS_API_KEY` is present.
 
 If you want to use a different provider later, set an environment variable before starting the app:
 
