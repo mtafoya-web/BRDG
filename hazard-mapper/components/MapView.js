@@ -1,7 +1,7 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
 import L from "leaflet";
 import { useEffect, useState } from "react";
 import { hazards as fallbackHazards } from "../data/hazards";
@@ -10,38 +10,45 @@ const fallbackImage =
   "data:image/svg+xml;utf8," +
   encodeURIComponent(`
     <svg xmlns="http://www.w3.org/2000/svg" width="400" height="240" viewBox="0 0 400 240">
-      <rect width="400" height="240" fill="#fef2f2" />
-      <rect x="24" y="24" width="352" height="192" rx="16" fill="#fee2e2" stroke="#f87171" stroke-width="3" />
-      <path d="M72 168 L140 104 L188 148 L246 86 L324 168" fill="none" stroke="#dc2626" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
-      <circle cx="128" cy="94" r="20" fill="#ef4444" />
-      <text x="200" y="208" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#991b1b">Hazard Image</text>
+      <rect width="400" height="240" fill="#f8faf7" />
+      <rect x="24" y="24" width="352" height="192" rx="16" fill="#fff7ed" stroke="#e85d04" stroke-width="3" />
+      <path d="M72 168 L140 104 L188 148 L246 86 L324 168" fill="none" stroke="#2f5f32" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" />
+      <circle cx="128" cy="94" r="20" fill="#e85d04" />
+      <text x="200" y="208" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" fill="#0b1623">Hazard Image</text>
     </svg>
   `);
 
 function getMarkerColor(level) {
   const normalized = String(level || "").toLowerCase();
 
-  if (normalized.includes("high") || normalized.includes("severe") || normalized.includes("critical")) {
+  if (
+    normalized.includes("high") ||
+    normalized.includes("severe") ||
+    normalized.includes("critical")
+  ) {
     return "#dc2626";
   }
 
-  if (normalized.includes("medium") || normalized.includes("moderate") || normalized.includes("warning")) {
-    return "#f59e0b";
+  if (
+    normalized.includes("medium") ||
+    normalized.includes("moderate") ||
+    normalized.includes("warning")
+  ) {
+    return "#e85d04";
   }
 
-  return "#3b82f6";
+  return "#2f5f32";
 }
 
 function getMarkerIcon(level) {
   return L.divIcon({
-    html: `<div style="background-color:${getMarkerColor(level)}; width: 16px; height: 16px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4);"></div>`,
+    html: `<div style="background-color:${getMarkerColor(level)}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(11,22,35,0.38);"></div>`,
     className: "",
-    iconSize: [16, 16],
-    iconAnchor: [8, 8],
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
   });
 }
 
-// Fix default Leaflet icon paths
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "/leaflet/marker-icon-2x.png",
@@ -53,7 +60,7 @@ export default function MapView() {
   const [hazards, setHazards] = useState([]);
   const [selectedHazard, setSelectedHazard] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [statusMessage, setStatusMessage] = useState("Loading fire hazard data…");
+  const [statusMessage, setStatusMessage] = useState("Loading fire hazard data...");
   const [mapCenter, setMapCenter] = useState([33.8353, -117.9145]);
   const [locationReady, setLocationReady] = useState(false);
 
@@ -83,8 +90,12 @@ export default function MapView() {
         }
       );
     } else {
-      setLocationReady(true);
-      setStatusMessage("Geolocation is not supported. Showing Anaheim instead.");
+      queueMicrotask(() => {
+        if (isMounted) {
+          setLocationReady(true);
+          setStatusMessage("Geolocation is not supported. Showing Anaheim instead.");
+        }
+      });
     }
 
     async function loadHazards() {
@@ -98,7 +109,11 @@ export default function MapView() {
 
         if (Array.isArray(data.hazards) && data.hazards.length > 0) {
           setHazards(data.hazards);
-          setStatusMessage("Showing live fire hazard data.");
+          setStatusMessage(
+            data.source === "fallback"
+              ? "Showing sample hazard data."
+              : "Showing live fire hazard data."
+          );
         } else {
           setHazards(fallbackHazards);
           setStatusMessage(
@@ -132,21 +147,22 @@ export default function MapView() {
   }, []);
 
   return (
-    <div className="relative z-10 space-y-2">
-      <p className="text-sm text-gray-600">{statusMessage}</p>
+    <div className="relative z-10 space-y-3">
+      <p className="text-sm font-semibold text-slate-600">{statusMessage}</p>
+
       {!locationReady && (
-        <p className="text-sm text-gray-500">Requesting your location…</p>
+        <p className="text-sm text-slate-500">Requesting your location...</p>
       )}
 
       {loading && (
-        <p className="text-sm text-gray-600">Loading fire hazard data…</p>
+        <p className="text-sm text-slate-600">Loading fire hazard data...</p>
       )}
 
       <MapContainer
         center={mapCenter}
         zoom={12}
         style={{ height: "500px", width: "100%" }}
-        className="bg-white"
+        className="border border-white/70 bg-white shadow-xl"
       >
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

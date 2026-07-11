@@ -1,49 +1,33 @@
 import "./globals.css";
+import Navbar from "../components/Navbar";
 import Link from "next/link";
 
 export const metadata = {
-  title: "Hazard Mapper",
-  description: "Drone hazard detection dashboard",
+  title: "Avengineers",
+  description: "Intelligent wildfire mitigation connected from the ground",
 };
 
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="bg-gradient-to-br from-gray-100 to-gray-200 text-gray-900">
-        
-        {/* Top Navigation */}
-        <nav className="bg-white shadow-md p-4 mb-6">
-          <ul className="flex space-x-6 font-semibold">
-            <li>
-              <Link
-                href="/"
-                className="text-gray-900 hover:text-blue-600 transition"
-              >
-                Dashboard
-              </Link>
-            </li>
+      <body>
+        <div className="min-h-screen flex flex-col">
+          <Navbar />
 
-            <li>
-              <Link
-                href="/map"
-                className="text-gray-900 hover:text-blue-600 transition"
-              >
-                Map
-              </Link>
-            </li>
+          <main className="flex-1 pt-24">
+            {children}
+          </main>
 
-            <li>
-              <Link
-                href="/hazards"
-                className="text-gray-900 hover:text-blue-600 transition"
-              >
-                Hazards
-              </Link>
-            </li>
-          </ul>
-        </nav>
+          <footer className="site-footer">
+            <p>&copy; 2026 Avengineers. All rights reserved.</p>
 
-        {children}
+            <p>
+              <Link href="/privacy">Privacy Policy</Link>
+              <span> | </span>
+              <Link href="/contact">Contact Us</Link>
+            </p>
+          </footer>
+        </div>
       </body>
     </html>
   );
