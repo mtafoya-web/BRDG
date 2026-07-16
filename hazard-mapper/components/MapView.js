@@ -1,10 +1,11 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import { MapContainer, Marker, Popup, TileLayer } from "react-leaflet";
+import Link from "next/link";
+import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import { useEffect, useState } from "react";
-import { hazards as fallbackHazards } from "../data/hazards";
+import useHazards from "../hooks/useHazards";
 
 const fallbackImage =
   "data:image/svg+xml;utf8," +
@@ -57,12 +58,21 @@ L.Icon.Default.mergeOptions({
 });
 
 export default function MapView() {
-  const [hazards, setHazards] = useState([]);
-  const [selectedHazard, setSelectedHazard] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [statusMessage, setStatusMessage] = useState("Loading fire hazard data...");
+  const { hazards, lastUpdated, loading, refresh, status } = useHazards();
+  const [selectedHazardId, setSelectedHazardId] = useState(() =>
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("hazard")
+  );
   const [mapCenter, setMapCenter] = useState([33.8353, -117.9145]);
   const [locationReady, setLocationReady] = useState(false);
+  const [locationMessage, setLocationMessage] = useState(
+    "Requesting your location..."
+  );
+
+  const selectedHazard = hazards.find(
+    (hazard) => String(hazard.id) === String(selectedHazardId)
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -73,14 +83,16 @@ export default function MapView() {
           if (isMounted) {
             setMapCenter([position.coords.latitude, position.coords.longitude]);
             setLocationReady(true);
-            setStatusMessage("Using your current location.");
+            setLocationMessage("Using your current location.");
           }
         },
         () => {
           if (isMounted) {
             setMapCenter([33.8353, -117.9145]);
             setLocationReady(true);
-            setStatusMessage("Location access was blocked. Showing Anaheim instead.");
+            setLocationMessage(
+              "Location access was blocked. Showing Anaheim instead."
+            );
           }
         },
         {
@@ -93,53 +105,12 @@ export default function MapView() {
       queueMicrotask(() => {
         if (isMounted) {
           setLocationReady(true);
-          setStatusMessage("Geolocation is not supported. Showing Anaheim instead.");
+          setLocationMessage(
+            "Geolocation is not supported. Showing Anaheim instead."
+          );
         }
       });
     }
-
-    async function loadHazards() {
-      try {
-        const response = await fetch("/api/fire-hazards");
-        const data = await response.json();
-
-        if (!isMounted) {
-          return;
-        }
-
-        if (Array.isArray(data.hazards) && data.hazards.length > 0) {
-          setHazards(data.hazards);
-          setStatusMessage(
-            data.source === "fallback"
-              ? "Showing sample hazard data."
-              : "Showing live fire hazard data."
-          );
-        } else {
-          setHazards(fallbackHazards);
-          setStatusMessage(
-            data.error
-              ? `Live API error: ${data.error}. Showing sample data.`
-              : "No live fire hazards returned. Showing sample data."
-          );
-        }
-      } catch (error) {
-        console.error("Failed to fetch fire hazards", error);
-        if (isMounted) {
-          setHazards(fallbackHazards);
-          setStatusMessage(
-            error instanceof Error
-              ? `Live API error: ${error.message}. Showing sample data.`
-              : "Unable to load live API data. Showing sample data."
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    loadHazards();
 
     return () => {
       isMounted = false;
@@ -148,15 +119,27 @@ export default function MapView() {
 
   return (
     <div className="relative z-10 space-y-3">
-      <p className="text-sm font-semibold text-slate-600">{statusMessage}</p>
-
-      {!locationReady && (
-        <p className="text-sm text-slate-500">Requesting your location...</p>
-      )}
-
-      {loading && (
-        <p className="text-sm text-slate-600">Loading fire hazard data...</p>
-      )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-slate-600">
+            {status}. Auto-refreshes every 60 seconds.
+          </p>
+          <p className="text-xs text-slate-500">
+            {locationMessage}
+            {lastUpdated
+              ? ` Last updated ${lastUpdated.toLocaleTimeString()}.`
+              : ""}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={refresh}
+          disabled={loading}
+          className="btn-secondary min-h-0 px-4 py-2 text-sm disabled:cursor-wait disabled:opacity-60"
+        >
+          {loading ? "Refreshing..." : "Refresh now"}
+        </button>
+      </div>
 
       <MapContainer
         center={mapCenter}
@@ -164,18 +147,23 @@ export default function MapView() {
         style={{ height: "500px", width: "100%" }}
         className="border border-white/70 bg-white shadow-xl"
       >
+        <MapController
+          center={selectedHazard?.position || mapCenter}
+          zoom={selectedHazard ? 10 : 12}
+        />
+
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="&copy; OpenStreetMap contributors"
         />
 
-        {hazards.map((h) => (
+        {hazards.filter(hasValidPosition).map((h) => (
           <Marker
             key={h.id}
             position={h.position}
             icon={getMarkerIcon(h.level)}
             eventHandlers={{
-              click: () => setSelectedHazard(h),
+              click: () => setSelectedHazardId(h.id),
             }}
           />
         ))}
@@ -183,7 +171,7 @@ export default function MapView() {
         {selectedHazard && (
           <Popup
             position={selectedHazard.position}
-            onClose={() => setSelectedHazard(null)}
+            onClose={() => setSelectedHazardId(null)}
           >
             <div className="max-w-[240px] space-y-1">
               <h2 className="font-bold text-gray-900">
@@ -213,10 +201,41 @@ export default function MapView() {
                   {selectedHazard.summary}
                 </p>
               )}
+              <Link
+                href={{
+                  pathname: "/hazards",
+                  query: { hazard: String(selectedHazard.id) },
+                }}
+                className="mt-2 inline-flex font-bold text-[#2f5f32] underline"
+              >
+                View complete data record
+              </Link>
             </div>
           </Popup>
         )}
       </MapContainer>
     </div>
   );
+}
+
+function hasValidPosition(hazard) {
+  return (
+    Array.isArray(hazard.position) &&
+    hazard.position.length === 2 &&
+    hazard.position.every((coordinate) => Number.isFinite(Number(coordinate)))
+  );
+}
+
+function MapController({ center, zoom }) {
+  const map = useMap();
+  const latitude = Number(center?.[0]);
+  const longitude = Number(center?.[1]);
+
+  useEffect(() => {
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      map.setView([latitude, longitude], zoom);
+    }
+  }, [latitude, longitude, map, zoom]);
+
+  return null;
 }

@@ -2,36 +2,25 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import useHazards from "@/hooks/useHazards";
 
 export default function HazardsPage() {
-  const [hazards, setHazards] = useState([]);
-  const [status, setStatus] = useState("Loading hazards...");
+  const { hazards, lastUpdated, loading, refresh, status } = useHazards();
+  const [selectedHazardId] = useState(() =>
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("hazard")
+  );
 
   useEffect(() => {
-    async function loadHazards() {
-      try {
-        const response = await fetch("/api/fire-hazards");
-        const data = await response.json();
-
-        if (Array.isArray(data.hazards) && data.hazards.length > 0) {
-          setHazards(data.hazards);
-          setStatus(
-            data.source === "fallback"
-              ? "Showing sample hazard data"
-              : "Showing live fire hazard data"
-          );
-        } else {
-          setStatus(data.error || "No hazards returned");
-        }
-      } catch (error) {
-        setStatus(
-          error instanceof Error ? error.message : "Failed to load hazards"
-        );
-      }
+    if (!selectedHazardId || hazards.length === 0) {
+      return;
     }
 
-    loadHazards();
-  }, []);
+    document
+      .getElementById(`hazard-${selectedHazardId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [hazards, selectedHazardId]);
 
   const highCount = hazards.filter((h) =>
     String(h.level || "").toLowerCase().includes("high")
@@ -67,10 +56,25 @@ export default function HazardsPage() {
             <p className="mt-1 text-sm text-slate-600">{status}</p>
           </div>
 
-          <Link href="/map" className="btn-secondary">
-            View Map
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={refresh}
+              disabled={loading}
+              className="btn-secondary disabled:cursor-wait disabled:opacity-60"
+            >
+              {loading ? "Refreshing..." : "Refresh now"}
+            </button>
+            <Link href="/map" className="btn-secondary">
+              View Map
+            </Link>
+          </div>
         </div>
+
+        <p className="border-b border-black/10 px-5 py-3 text-xs text-slate-500">
+          Auto-refreshes every 60 seconds
+          {lastUpdated ? ` · Last updated ${lastUpdated.toLocaleTimeString()}` : ""}
+        </p>
 
         <div className="overflow-x-auto">
           <table className="data-table">
@@ -81,12 +85,21 @@ export default function HazardsPage() {
                 <th>Level</th>
                 <th>Reported</th>
                 <th>Location</th>
+                <th>Map</th>
               </tr>
             </thead>
 
             <tbody>
               {hazards.map((h) => (
-                <tr key={h.id} className="transition hover:bg-white/55">
+                <tr
+                  id={`hazard-${h.id}`}
+                  key={h.id}
+                  className={`transition hover:bg-white/55 ${
+                    String(h.id) === String(selectedHazardId)
+                      ? "bg-orange-100/80 ring-2 ring-inset ring-orange-400"
+                      : ""
+                  }`}
+                >
                   <td className="font-semibold">{h.id}</td>
 
                   <td className="capitalize">
@@ -105,6 +118,18 @@ export default function HazardsPage() {
                           h.position[1]
                         ).toFixed(4)}`
                       : "Unknown"}
+                  </td>
+
+                  <td>
+                    <Link
+                      href={{
+                        pathname: "/map",
+                        query: { hazard: String(h.id) },
+                      }}
+                      className="font-bold text-[#2f5f32] underline"
+                    >
+                      Show on map
+                    </Link>
                   </td>
                 </tr>
               ))}
