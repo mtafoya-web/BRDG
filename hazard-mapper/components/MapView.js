@@ -2,10 +2,20 @@
 
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  Popup,
+  TileLayer,
+  useMap,
+} from "react-leaflet";
 import L from "leaflet";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useHazards from "../hooks/useHazards";
+import { useHazardFilters } from "./HazardFiltersProvider";
+
+const FIRE_LEVELS = ["Low", "Moderate", "High", "Very High", "Critical"];
+const HAZARD_TYPES = ["Wildfire", "Prescribed Fire", "Fire", "Chemical"];
+const USA_CENTER = [39.8283, -98.5795];
 
 const fallbackImage =
   "data:image/svg+xml;utf8," +
@@ -22,100 +32,85 @@ const fallbackImage =
 function getMarkerColor(level) {
   const normalized = String(level || "").toLowerCase();
 
-  if (
-    normalized.includes("high") ||
-    normalized.includes("severe") ||
-    normalized.includes("critical")
-  ) {
+  if (normalized.includes("critical")) {
+    return "#7f1d1d";
+  }
+
+  if (normalized.includes("very high") || normalized.includes("severe")) {
     return "#dc2626";
   }
 
-  if (
-    normalized.includes("medium") ||
-    normalized.includes("moderate") ||
-    normalized.includes("warning")
-  ) {
-    return "#e85d04";
+  if (normalized.includes("high")) {
+    return "#f97316";
+  }
+
+  if (normalized.includes("moderate") || normalized.includes("warning")) {
+    return "#eab308";
   }
 
   return "#2f5f32";
 }
 
-function getMarkerIcon(level) {
-  return L.divIcon({
-    html: `<div style="background-color:${getMarkerColor(level)}; width: 18px; height: 18px; border-radius: 50%; border: 3px solid white; box-shadow: 0 0 10px rgba(11,22,35,0.38);"></div>`,
-    className: "",
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
-  });
-}
-
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: "/leaflet/marker-icon-2x.png",
-  iconUrl: "/leaflet/marker-icon.png",
-  shadowUrl: "/leaflet/marker-shadow.png",
-});
-
 export default function MapView() {
   const { hazards, lastUpdated, loading, refresh, status } = useHazards();
+  const {
+    cityFilter,
+    levelFilter,
+    setCityFilter,
+    setLevelFilter,
+    setStateFilter,
+    setTypeFilter,
+    stateFilter,
+    typeFilter,
+  } = useHazardFilters();
   const [selectedHazardId, setSelectedHazardId] = useState(() =>
     typeof window === "undefined"
       ? null
       : new URLSearchParams(window.location.search).get("hazard")
   );
-  const [mapCenter, setMapCenter] = useState([33.8353, -117.9145]);
-  const [locationReady, setLocationReady] = useState(false);
-  const [locationMessage, setLocationMessage] = useState(
-    "Requesting your location..."
-  );
 
-  const selectedHazard = hazards.find(
+  const stateOptions = useMemo(
+    () =>
+      [...new Set(hazards.map((hazard) => hazard.state).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b)
+      ),
+    [hazards]
+  );
+  const cityOptions = useMemo(
+    () =>
+      [
+        ...new Set(
+          hazards
+            .filter(
+              (hazard) =>
+                stateFilter === "All states" || hazard.state === stateFilter
+            )
+            .map((hazard) => hazard.city)
+            .filter((city) => city && city !== "Unknown")
+        ),
+      ].sort((a, b) => a.localeCompare(b)),
+    [hazards, stateFilter]
+  );
+  const visibleHazards = useMemo(
+    () =>
+      hazards.filter(
+        (hazard) =>
+          (stateFilter === "All states" || hazard.state === stateFilter) &&
+          (levelFilter === "All levels" || hazard.level === levelFilter) &&
+          (typeFilter === "All types" || hazard.type === typeFilter) &&
+          (cityFilter === "All cities / areas" || hazard.city === cityFilter)
+      ),
+    [cityFilter, hazards, levelFilter, stateFilter, typeFilter]
+  );
+  const mappableHazards = useMemo(
+    () => visibleHazards.filter(hasValidPosition),
+    [visibleHazards]
+  );
+  const fitKey = `${stateFilter}|${cityFilter}|${levelFilter}|${typeFilter}`;
+
+  const selectedHazard = visibleHazards.find(
     (hazard) => String(hazard.id) === String(selectedHazardId)
   );
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (typeof window !== "undefined" && navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          if (isMounted) {
-            setMapCenter([position.coords.latitude, position.coords.longitude]);
-            setLocationReady(true);
-            setLocationMessage("Using your current location.");
-          }
-        },
-        () => {
-          if (isMounted) {
-            setMapCenter([33.8353, -117.9145]);
-            setLocationReady(true);
-            setLocationMessage(
-              "Location access was blocked. Showing Anaheim instead."
-            );
-          }
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0,
-        }
-      );
-    } else {
-      queueMicrotask(() => {
-        if (isMounted) {
-          setLocationReady(true);
-          setLocationMessage(
-            "Geolocation is not supported. Showing Anaheim instead."
-          );
-        }
-      });
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
 
   return (
     <div className="relative z-10 space-y-3">
@@ -125,7 +120,8 @@ export default function MapView() {
             {status}. Auto-refreshes every 60 seconds.
           </p>
           <p className="text-xs text-slate-500">
-            {locationMessage}
+            Showing all matching U.S. reports. Browser location does not limit
+            hazard coverage.
             {lastUpdated
               ? ` Last updated ${lastUpdated.toLocaleTimeString()}.`
               : ""}
@@ -141,15 +137,104 @@ export default function MapView() {
         </button>
       </div>
 
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-black/10 bg-white/65 px-4 py-3 text-xs font-semibold text-slate-600">
+        <span>
+          {mappableHazards.length} of {hazards.length} hazards on map
+        </span>
+        <label className="inline-flex items-center gap-1.5">
+          <span>State</span>
+          <select
+            value={stateFilter}
+            onChange={(event) => {
+              setStateFilter(event.target.value);
+              setSelectedHazardId(null);
+            }}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 outline-none"
+          >
+            <option>All states</option>
+            {stateOptions.map((state) => (
+              <option key={state} value={state}>
+                {state}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-1.5">
+          <span>City</span>
+          <select
+            value={cityFilter}
+            onChange={(event) => {
+              setCityFilter(event.target.value);
+              setSelectedHazardId(null);
+            }}
+            className="max-w-48 rounded-md border border-slate-300 bg-white px-2 py-1 outline-none"
+          >
+            <option>All cities / areas</option>
+            {cityOptions.map((city) => (
+              <option key={city} value={city}>
+                {city}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-1.5">
+          <span>Level</span>
+          <select
+            value={levelFilter}
+            onChange={(event) => {
+              setLevelFilter(event.target.value);
+              setSelectedHazardId(null);
+            }}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 outline-none"
+          >
+            <option>All levels</option>
+            {FIRE_LEVELS.map((level) => (
+              <option key={level} value={level}>
+                {level}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="inline-flex items-center gap-1.5">
+          <span>Type</span>
+          <select
+            value={typeFilter}
+            onChange={(event) => {
+              setTypeFilter(event.target.value);
+              setSelectedHazardId(null);
+            }}
+            className="rounded-md border border-slate-300 bg-white px-2 py-1 outline-none"
+          >
+            <option>All types</option>
+            {HAZARD_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+        </label>
+        <MapLegend color="#7f1d1d" label="Critical" />
+        <MapLegend color="#dc2626" label="Very High" />
+        <MapLegend color="#f97316" label="High" />
+        <MapLegend color="#eab308" label="Moderate" />
+        <MapLegend color="#2f5f32" label="Low" />
+        <span className="font-normal text-slate-500">
+          The map automatically fits all current reports.
+        </span>
+      </div>
+
       <MapContainer
-        center={mapCenter}
-        zoom={12}
+        center={USA_CENTER}
+        zoom={4}
+        preferCanvas
         style={{ height: "500px", width: "100%" }}
         className="border border-white/70 bg-white shadow-xl"
       >
         <MapController
-          center={selectedHazard?.position || mapCenter}
-          zoom={selectedHazard ? 10 : 12}
+          fallbackCenter={USA_CENTER}
+          fitKey={fitKey}
+          hazards={mappableHazards}
+          selectedHazard={selectedHazard}
         />
 
         <TileLayer
@@ -157,16 +242,7 @@ export default function MapView() {
           attribution="&copy; OpenStreetMap contributors"
         />
 
-        {hazards.filter(hasValidPosition).map((h) => (
-          <Marker
-            key={h.id}
-            position={h.position}
-            icon={getMarkerIcon(h.level)}
-            eventHandlers={{
-              click: () => setSelectedHazardId(h.id),
-            }}
-          />
-        ))}
+        <HazardLayer hazards={mappableHazards} onSelect={setSelectedHazardId} />
 
         {selectedHazard && (
           <Popup
@@ -186,14 +262,23 @@ export default function MapView() {
               <p className="text-sm text-gray-700">
                 Reported: {selectedHazard.time}
               </p>
-              {(selectedHazard.media || fallbackImage) && (
+              <p className="text-sm text-gray-700">
+                Location: {selectedHazard.city || "Unknown"},{" "}
+                {selectedHazard.state || "Unknown"}
+              </p>
+              {selectedHazard.media ? (
                 <img
-                  src={selectedHazard.media || fallbackImage}
+                  src={selectedHazard.media}
                   alt={selectedHazard.title || "Hazard image"}
                   className="w-full rounded-md border border-gray-200"
                   onError={(event) => {
                     event.currentTarget.src = fallbackImage;
                   }}
+                />
+              ) : (
+                <CameraPreview
+                  key={selectedHazard.id}
+                  position={selectedHazard.position}
                 />
               )}
               {selectedHazard.summary && (
@@ -226,16 +311,190 @@ function hasValidPosition(hazard) {
   );
 }
 
-function MapController({ center, zoom }) {
+function MapController({ fallbackCenter, fitKey, hazards, selectedHazard }) {
   const map = useMap();
-  const latitude = Number(center?.[0]);
-  const longitude = Number(center?.[1]);
+  const lastFitKey = useRef(null);
+  const selectedLatitude = Number(selectedHazard?.position?.[0]);
+  const selectedLongitude = Number(selectedHazard?.position?.[1]);
+  const fallbackLatitude = Number(fallbackCenter?.[0]);
+  const fallbackLongitude = Number(fallbackCenter?.[1]);
+  const validPositions = useMemo(
+    () =>
+      hazards.filter(hasValidPosition).map((hazard) => [
+        Number(hazard.position[0]),
+        Number(hazard.position[1]),
+      ]),
+    [hazards]
+  );
 
   useEffect(() => {
-    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
-      map.setView([latitude, longitude], zoom);
+    if (
+      Number.isFinite(selectedLatitude) &&
+      Number.isFinite(selectedLongitude)
+    ) {
+      map.setView([selectedLatitude, selectedLongitude], 10);
+      return;
     }
-  }, [latitude, longitude, map, zoom]);
+
+    if (validPositions.length > 0 && lastFitKey.current !== fitKey) {
+      map.fitBounds(validPositions, {
+        padding: [40, 40],
+        maxZoom: 9,
+      });
+      lastFitKey.current = fitKey;
+      return;
+    }
+
+    if (Number.isFinite(fallbackLatitude) && Number.isFinite(fallbackLongitude)) {
+      map.setView([fallbackLatitude, fallbackLongitude], 12);
+    }
+  }, [
+    fallbackLatitude,
+    fallbackLongitude,
+    fitKey,
+    map,
+    selectedLatitude,
+    selectedLongitude,
+    validPositions,
+  ]);
 
   return null;
+}
+
+function HazardLayer({ hazards, onSelect }) {
+  const map = useMap();
+
+  useEffect(() => {
+    const layer = L.layerGroup().addTo(map);
+    const renderer = L.canvas({ padding: 0.5 });
+
+    hazards.forEach((hazard) => {
+      L.circleMarker(hazard.position, {
+        renderer,
+        radius: 6,
+        color: "#ffffff",
+        fillColor: getMarkerColor(hazard.level),
+        fillOpacity: 0.9,
+        weight: 2,
+      })
+        .on("click", () => onSelect(hazard.id))
+        .addTo(layer);
+    });
+
+    return () => {
+      layer.remove();
+      renderer.remove();
+    };
+  }, [hazards, map, onSelect]);
+
+  return null;
+}
+
+function MapLegend({ color, label }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span
+        className="h-3 w-3 rounded-full border-2 border-white shadow"
+        style={{ backgroundColor: color }}
+      />
+      {label}
+    </span>
+  );
+}
+
+function CameraPreview({ position }) {
+  const [result, setResult] = useState({ status: "loading", camera: null });
+  const [imageFailed, setImageFailed] = useState(false);
+  const latitude = Number(position?.[0]);
+  const longitude = Number(position?.[1]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadCamera() {
+      try {
+        const response = await fetch(
+          `/api/nearby-camera?lat=${encodeURIComponent(latitude)}&lng=${encodeURIComponent(longitude)}`,
+          { signal: controller.signal }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Camera lookup returned ${response.status}`);
+        }
+
+        const data = await response.json();
+        setResult({
+          status: data.camera ? "ready" : "unavailable",
+          camera: data.camera || null,
+        });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        setResult({ status: "unavailable", camera: null });
+      }
+    }
+
+    if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+      loadCamera();
+    }
+
+    return () => controller.abort();
+  }, [latitude, longitude]);
+
+  if (result.status === "loading") {
+    return (
+      <p className="rounded-md bg-slate-100 p-2 text-xs text-slate-600">
+        Looking for a nearby public wildfire camera...
+      </p>
+    );
+  }
+
+  if (!result.camera) {
+    return (
+      <p className="rounded-md bg-slate-100 p-2 text-xs text-slate-600">
+        No compatible public camera was found within 100 miles of this report.
+      </p>
+    );
+  }
+
+  const camera = result.camera;
+
+  return (
+    <div className="space-y-1 rounded-md border border-gray-200 p-2">
+      {!imageFailed ? (
+        <img
+          src={camera.imageUrl}
+          alt={`Current view from ${camera.name}`}
+          className="w-full rounded-md"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <p className="bg-slate-100 p-2 text-xs text-slate-600">
+          The current camera image could not be loaded.
+        </p>
+      )}
+      <p className="text-xs font-bold text-gray-800">
+        {camera.name} · {camera.distanceMiles} miles away
+      </p>
+      {camera.viewTime && (
+        <p className="text-xs text-gray-600">Camera time: {camera.viewTime}</p>
+      )}
+      <p className="text-[11px] leading-4 text-gray-500">
+        Public image: ALERTCalifornia | UC San Diego. A nearby camera may not
+        be facing the incident and does not confirm visible fire.
+      </p>
+      {camera.liveUrl && (
+        <a
+          href={camera.liveUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex text-xs font-bold text-[#2f5f32] underline"
+        >
+          Open live public camera
+        </a>
+      )}
+    </div>
+  );
 }

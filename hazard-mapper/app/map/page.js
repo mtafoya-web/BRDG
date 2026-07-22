@@ -15,8 +15,8 @@ export default function MapPage() {
           <div className="section-kicker">Live map</div>
           <h1 className="section-title">Ground-level hazard awareness.</h1>
           <p className="section-copy">
-            The map centers on your location when available and overlays active
-            hazard reports from the same feed used by the data table.
+            The map fits all matching U.S. wildfire reports and uses the same
+            nationwide feed and filters as the hazard data table.
           </p>
         </div>
 

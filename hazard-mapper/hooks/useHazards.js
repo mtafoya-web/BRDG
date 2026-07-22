@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { hazards as fallbackHazards } from "../data/hazards";
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -12,6 +12,7 @@ export default function useHazards() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const dataVersionRef = useRef(null);
 
   const refresh = useCallback(() => {
     setRefreshKey((current) => current + 1);
@@ -20,14 +21,21 @@ export default function useHazards() {
   useEffect(() => {
     const controller = new AbortController();
 
-    async function loadHazards(silent = false) {
+    async function loadHazards(silent = false, force = false) {
       if (!silent) {
         setLoading(true);
       }
 
       try {
-        const response = await fetch("/api/fire-hazards", {
-          cache: "no-store",
+        const query = new URLSearchParams({ compact: "1" });
+
+        if (force) {
+          query.set("refresh", "1");
+          query.set("request", String(refreshKey));
+        }
+
+        const response = await fetch(`/api/fire-hazards?${query}`, {
+          cache: force ? "no-store" : "default",
           signal: controller.signal,
         });
 
@@ -41,14 +49,27 @@ export default function useHazards() {
             ? data.hazards
             : fallbackHazards;
 
-        setHazards(nextHazards);
+        const dataVersion =
+          data.updatedAt ||
+          `${data.source}:${nextHazards.length}:${nextHazards[0]?.id || "none"}`;
+
+        if (dataVersionRef.current !== dataVersion) {
+          dataVersionRef.current = dataVersion;
+          setHazards(nextHazards);
+        }
+
         setSource(data.source || "fallback");
         setStatus(
           data.source === "fallback"
             ? "Showing sample hazard data"
-            : "Showing live fire hazard data"
+            : data.source === "last-known-live"
+              ? "Showing the last known live wildfire data"
+              : "Showing live U.S. wildfire data"
         );
-        setLastUpdated(new Date());
+        const updatedAt = data.updatedAt ? new Date(data.updatedAt) : new Date();
+        setLastUpdated((current) =>
+          current?.getTime() === updatedAt.getTime() ? current : updatedAt
+        );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
@@ -71,7 +92,7 @@ export default function useHazards() {
       }
     }
 
-    loadHazards();
+    loadHazards(false, refreshKey > 0);
     const intervalId = window.setInterval(
       () => loadHazards(true),
       REFRESH_INTERVAL_MS

@@ -18,7 +18,7 @@ export default function PrivacyPage() {
         />
         <PolicyCard
           title="Location"
-          body="The map asks for browser location only to center the view. It does not persist location in this app."
+          body="The map does not request or store browser location. Its viewport is based on nationwide hazard reports and selected filters."
         />
         <PolicyCard
           title="Contact"

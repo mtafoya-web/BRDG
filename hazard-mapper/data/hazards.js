@@ -6,13 +6,17 @@ export const hazards = [
     time: "2026-06-17 15:30",
     media: "https://placehold.co/300x200?text=Drone+Footage",
     position: [33.7455, -117.8677],
+    state: "California",
+    city: "Santa Ana",
   },
   {
     id: 2,
     type: "Chemical",
-    level: "Medium",
+    level: "Moderate",
     time: "2026-06-17 15:20",
     media: "https://placehold.co/300x200?text=Drone+Footage",
     position: [33.75, -117.86],
+    state: "California",
+    city: "Santa Ana",
   },
 ];

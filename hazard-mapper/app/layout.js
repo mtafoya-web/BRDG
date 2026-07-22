@@ -1,5 +1,6 @@
 import "./globals.css";
 import Navbar from "../components/Navbar";
+import HazardFiltersProvider from "../components/HazardFiltersProvider";
 import Link from "next/link";
 
 export const metadata = {
@@ -11,23 +12,25 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body>
-        <div className="min-h-screen flex flex-col">
-          <Navbar />
+        <HazardFiltersProvider>
+          <div className="min-h-screen flex flex-col">
+            <Navbar />
 
-          <main className="flex-1 pt-24">
-            {children}
-          </main>
+            <main className="flex-1 pt-24">
+              {children}
+            </main>
 
-          <footer className="site-footer">
-            <p>&copy; 2026 Avengineers. All rights reserved.</p>
+            <footer className="site-footer">
+              <p>&copy; 2026 Avengineers. All rights reserved.</p>
 
-            <p>
-              <Link href="/privacy">Privacy Policy</Link>
-              <span> | </span>
-              <Link href="/contact">Contact Us</Link>
-            </p>
-          </footer>
-        </div>
+              <p>
+                <Link href="/privacy">Privacy Policy</Link>
+                <span> | </span>
+                <Link href="/contact">Contact Us</Link>
+              </p>
+            </footer>
+          </div>
+        </HazardFiltersProvider>
       </body>
     </html>
   );
