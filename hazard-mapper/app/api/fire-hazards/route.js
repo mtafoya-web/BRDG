@@ -58,6 +58,7 @@ const US_STATES = [
 let lastKnownLiveResult = null;
 let refreshInFlight = null;
 const LIVE_CACHE_MS = 60_000;
+const UPSTREAM_TIMEOUT_MS = 8_000;
 
 function getStateFromTitle(title) {
   const normalizedTitle = String(title || "");
@@ -357,23 +358,30 @@ function normalizeHazards(payload) {
   return [];
 }
 
-async function fetchHazardsFromUrl(url) {
+async function fetchHazardsFromUrl(url, { force = false } = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+
+  try {
   const res = await fetch(url, {
-    next: { revalidate: 60 },
+    ...(force ? { cache: "no-store" } : { next: { revalidate: 60 } }),
     headers: {
       "User-Agent": "hazard-mapper/1.0",
     },
+    signal: controller.signal,
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`NASA fire API responded with ${res.status} ${res.statusText}. ${body.slice(0, 200)}`);
+    throw new Error(`Fire provider responded with ${res.status} ${res.statusText}.`);
   }
 
   const text = await res.text();
   const payload = text.trim().startsWith("{") ? JSON.parse(text) : text;
 
   return normalizeHazards(payload);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function getCandidateUrls() {
@@ -398,12 +406,12 @@ function getCandidateUrls() {
   return candidateUrls;
 }
 
-async function refreshLiveHazards() {
+async function refreshLiveHazards({ force = false } = {}) {
   let lastError = null;
 
   for (const url of getCandidateUrls()) {
     try {
-      const hazards = await fetchHazardsFromUrl(url);
+      const hazards = await fetchHazardsFromUrl(url, { force });
 
       const unitedStatesHazards = hazards.filter(
         (hazard) => hazard.state && hazard.state !== "International / Other"
@@ -489,7 +497,7 @@ export async function GET(request) {
       return createHazardResponse(lastKnownLiveResult, compact);
     }
 
-    const result = await refreshLiveHazards();
+    const result = await refreshLiveHazards({ force: forceRefresh });
     return createHazardResponse(result, compact);
   } catch (error) {
     console.error("Unable to refresh live fire hazards", error);
@@ -499,7 +507,7 @@ export async function GET(request) {
         {
           ...lastKnownLiveResult,
           source: "last-known-live",
-          error: error instanceof Error ? error.message : "Refresh failed.",
+          error: "Live data refresh failed; showing the last known result.",
         },
         compact
       );
@@ -510,7 +518,7 @@ export async function GET(request) {
         hazards: fallbackHazards,
         source: "fallback",
         updatedAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : "Live data unavailable.",
+        error: "Live data is temporarily unavailable; showing sample hazards.",
       },
       { status: 200 }
     );
