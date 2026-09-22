@@ -395,7 +395,7 @@ function getCandidateUrls() {
   candidateUrls.push(
     "https://eonet.gsfc.nasa.gov/api/v3/categories/wildfires?status=open&source=IRWIN",
     "https://eonet.gsfc.nasa.gov/api/v3/categories/wildfires?status=open",
-    "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires"
+    "https://eonet.gsfc.nasa.gov/api/v3/events?status=open&category=wildfires&limit=50"
   );
 
   const firmsApiUrl = getFirmsApiUrl();
