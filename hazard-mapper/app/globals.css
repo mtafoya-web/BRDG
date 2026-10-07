@@ -34,8 +34,7 @@ body {
   min-height: calc(100vh - 6rem);
   overflow: hidden;
   background:
-    linear-gradient(115deg, rgba(248, 250, 247, 0.98) 0%, rgba(238, 243, 238, 0.88) 44%, rgba(255, 138, 42, 0.22) 100%),
-    url("/images/prototype-cropped.jpg") center / cover no-repeat;
+    linear-gradient(115deg, rgba(248, 250, 247, 0.98) 0%, rgba(238, 243, 238, 0.88) 44%, rgba(255, 138, 42, 0.22) 100%);
 }
 
 .home-hero::before {
@@ -52,12 +51,6 @@ body {
   width: min(100% - 2rem, 1180px);
   margin: 0 auto;
   padding: 3rem 0 1rem;
-}
-
-.page-section {
-  width: min(100% - 2rem, 1180px);
-  margin: 0 auto;
-  padding: clamp(3rem, 7vw, 5.5rem) 0;
 }
 
 .section-kicker {

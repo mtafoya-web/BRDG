@@ -15,15 +15,6 @@ export function getHazardTimestamp(value) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-export function sortHazardsByTime(hazards, order) {
-  const direction = order === "oldest" ? 1 : -1;
-
-  return [...hazards].sort(
-    (a, b) =>
-      direction * (getHazardTimestamp(a.time) - getHazardTimestamp(b.time))
-  );
-}
-
 export function sortHazards(hazards, { cityOrder, timeOrder }) {
   const cityDirection = cityOrder === "za" ? -1 : 1;
   const timeDirection = timeOrder === "oldest" ? 1 : -1;
